@@ -135,7 +135,6 @@ def main():
         save_strategy="steps",
         save_steps=args.save_steps,
         save_total_limit=args.save_total_limit,
-        save_safetensors=True,
         report_to=["tensorboard"],
         dataloader_num_workers=args.num_workers,
         dataloader_pin_memory=True,
