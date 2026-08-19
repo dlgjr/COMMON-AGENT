@@ -492,7 +492,7 @@ def source_specs(root):
         obj = json.loads(meta.read_text(encoding="utf-8"))
         for f in obj.get("files", []):
             specs.append((f"agentbank/{f['config']}", root / "AgentBank" / f["path"], "parquet"))
-    return [(s, p, k) for s, p, kk in specs if p.exists()]
+    return [(s, p, k) for s, p, k in specs if p.exists()]
 
 
 def find_subseq(seq, sub, start):
