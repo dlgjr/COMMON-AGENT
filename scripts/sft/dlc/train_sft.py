@@ -112,6 +112,7 @@ def main():
 
     train_dataset = load_from_disk(args.dataset_path)
     collator = AgentSFTCollator(tokenizer.pad_token_id)
+    report_to = [x.strip() for x in os.environ.get("REPORT_TO", "tensorboard,wandb").split(",") if x.strip()]
 
     training_args = TrainingArguments(
         output_dir=args.output_dir,
@@ -134,7 +135,7 @@ def main():
         save_strategy="steps",
         save_steps=args.save_steps,
         save_total_limit=args.save_total_limit,
-        report_to=["tensorboard"],
+        report_to=report_to,
         dataloader_num_workers=args.num_workers,
         dataloader_pin_memory=True,
         remove_unused_columns=True,
