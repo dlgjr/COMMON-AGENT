@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
 SCRIPT_DIR="/mnt/nas/bihaoran/common_agent/scripts/sft/dlc"
+PY="/mnt/nas/bihaoran/common_agent/envs/qwen35_swift/bin/python"
 MODEL_PATH="/mnt/nas/bihaoran/common_agent/model/Qwen3.5-4B-Base"
 DATA_ROOT="/mnt/nas/bihaoran/agent_data"
 TOKENIZED_DATA="/mnt/nas/bihaoran/common_agent/data/sft_coldstart/qwen35_4b_8192"
@@ -15,11 +16,11 @@ PER_DEVICE_BATCH_SIZE=${PER_DEVICE_BATCH_SIZE:-1}
 GRAD_ACCUM=${GRAD_ACCUM:-8}
 LR=${LR:-1e-5}
 EPOCHS=${EPOCHS:-1}
-NPROC_PER_NODE=${NPROC_PER_NODE:-$(nvidia-smi -L 2>/dev/null | wc -l)}
+NPROC_PER_NODE=${NPROC_PER_NODE:-$("$PY" -c 'import torch; print(torch.cuda.device_count())')}
 [ "$NPROC_PER_NODE" -lt 1 ] && NPROC_PER_NODE=1
 
 if [ "${NODE_RANK:-0}" -eq 0 ]; then
-  python3 "$SCRIPT_DIR/prepare_sft_data.py" \
+  "$PY" "$SCRIPT_DIR/prepare_sft_data.py" \
     --data-root "$DATA_ROOT" \
     --model-path "$MODEL_PATH" \
     --output-dir "$TOKENIZED_DATA" \
@@ -30,7 +31,7 @@ else
 fi
 
 if [ "${NNODES:-1}" -gt 1 ]; then
-  torchrun \
+  "$PY" -m torch.distributed.run \
     --nnodes="${NNODES}" \
     --node_rank="${NODE_RANK:-0}" \
     --nproc_per_node="$NPROC_PER_NODE" \
@@ -48,7 +49,7 @@ if [ "${NNODES:-1}" -gt 1 ]; then
     --logging-steps 10 \
     --save-steps 500
 else
-  torchrun --standalone --nproc_per_node="$NPROC_PER_NODE" \
+  "$PY" -m torch.distributed.run --standalone --nproc_per_node="$NPROC_PER_NODE" \
     "$SCRIPT_DIR/train_sft.py" \
     --model-path "$MODEL_PATH" \
     --dataset-path "$TOKENIZED_DATA" \
