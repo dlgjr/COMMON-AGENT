@@ -416,7 +416,7 @@ def collect_called_names(messages):
             if fn.get("name"):
                 names.append(str(fn["name"]))
         if m.get("role") == "assistant":
-            names.extend(re.findall(r"<function=([^>]+)>", text_of(m.get("content", "")))
+            names.extend(re.findall(r"<function=([^>]+)>", text_of(m.get("content", ""))))
     return set(names)
 
 
