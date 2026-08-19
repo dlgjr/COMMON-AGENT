@@ -5,14 +5,11 @@ PY="/mnt/nas/bihaoran/common_agent/envs/qwen35_swift/bin/python"
 MODEL_PATH="/mnt/nas/bihaoran/common_agent/model/Qwen3.5-4B-Base"
 DATA_ROOT="/mnt/nas/bihaoran/agent_data"
 TOKENIZED_DATA="/mnt/nas/bihaoran/common_agent/data/sft_coldstart/debug_qwen35_4b_2048"
-OUTPUT_DIR="/mnt/nas/bihaoran/common_agent/output/sft/debug_qwen3.5-4b-base-coldstart"
+OUTPUT_DIR="/mnt/nas/bihaoran/common_agent/output/sft/debug_qwen3.5-4b-base-coldstart-lora"
 
 export TOKENIZERS_PARALLELISM=false
-export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+export PYTORCH_ALLOC_CONF=expandable_segments:True
 export OMP_NUM_THREADS=${OMP_NUM_THREADS:-8}
-
-NPROC_PER_NODE=${NPROC_PER_NODE:-$("$PY" -c 'import torch; print(torch.cuda.device_count())')}
-[ "$NPROC_PER_NODE" -lt 1 ] && NPROC_PER_NODE=1
 
 "$PY" "$SCRIPT_DIR/prepare_sft_data.py" \
   --data-root "$DATA_ROOT" \
@@ -21,19 +18,21 @@ NPROC_PER_NODE=${NPROC_PER_NODE:-$("$PY" -c 'import torch; print(torch.cuda.devi
   --max-length 2048 \
   --max-tools 16 \
   --max-records-per-source 8 \
-  --overwrite
-
-"$PY" -m torch.distributed.run --standalone --nproc_per_node="$NPROC_PER_NODE" \
-  "$SCRIPT_DIR/train_sft.py" \
+  --overwrite && \
+"$PY" "$SCRIPT_DIR/train_sft.py" \
   --model-path "$MODEL_PATH" \
   --dataset-path "$TOKENIZED_DATA" \
   --output-dir "$OUTPUT_DIR" \
-  --deepspeed "$SCRIPT_DIR/ds_zero2.json" \
   --max-steps 5 \
   --per-device-batch-size 1 \
   --grad-accum 1 \
-  --learning-rate 1e-5 \
+  --learning-rate 1e-4 \
   --logging-steps 1 \
   --save-steps 5 \
   --save-total-limit 1 \
-  --num-workers 2
+  --num-workers 2 \
+  --optim adamw_torch \
+  --lora-r 8 \
+  --lora-alpha 16 \
+  --lora-dropout 0.05 \
+  --lora-target-modules q_proj,v_proj
