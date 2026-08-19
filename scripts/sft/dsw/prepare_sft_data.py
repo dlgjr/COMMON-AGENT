@@ -347,7 +347,7 @@ def canonicalize_apigen(row):
     system = text_of(row.get("system", "")).strip()
     if system:
         messages.append({"role": "system", "content": system})
-    messages.extend(normalize_message_list(row.get("conversations"))
+    messages.extend(normalize_message_list(row.get("conversations")))
     return {"messages": messages, "tools": tools}
 
 
