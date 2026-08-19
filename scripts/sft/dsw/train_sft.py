@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 import argparse
 import os
-from pathlib import Path
 
 import torch
 from datasets import load_from_disk
+from peft import LoraConfig, get_peft_model
 from transformers import AutoModelForMultimodalLM, AutoProcessor, Trainer, TrainingArguments
 
 
@@ -42,6 +42,23 @@ def freeze_non_text(model):
     return frozen
 
 
+def apply_lora(model, args):
+    for p in model.parameters():
+        p.requires_grad = False
+    config = LoraConfig(
+        r=args.lora_r,
+        lora_alpha=args.lora_alpha,
+        lora_dropout=args.lora_dropout,
+        target_modules=[x.strip() for x in args.lora_target_modules.split(",") if x.strip()],
+        bias="none",
+    )
+    model = get_peft_model(model, config)
+    for name, p in model.named_parameters():
+        if "lora_" in name and "language_model" not in name:
+            p.requires_grad = False
+    return model
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--model-path", default="/mnt/nas/bihaoran/common_agent/model/Qwen3.5-4B-Base")
@@ -60,6 +77,11 @@ def main():
     ap.add_argument("--save-total-limit", type=int, default=2)
     ap.add_argument("--num-workers", type=int, default=4)
     ap.add_argument("--seed", type=int, default=42)
+    ap.add_argument("--optim", default="adamw_torch_fused")
+    ap.add_argument("--lora-r", type=int, default=0)
+    ap.add_argument("--lora-alpha", type=int, default=16)
+    ap.add_argument("--lora-dropout", type=float, default=0.05)
+    ap.add_argument("--lora-target-modules", default="q_proj,v_proj")
     args = ap.parse_args()
 
     processor = AutoProcessor.from_pretrained(args.model_path, trust_remote_code=False)
@@ -73,14 +95,20 @@ def main():
         trust_remote_code=False,
     )
     model.config.use_cache = False
-    frozen = freeze_non_text(model)
+    if args.lora_r > 0:
+        model = apply_lora(model, args)
+        frozen = 0
+    else:
+        frozen = freeze_non_text(model)
     model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
+    if args.lora_r > 0 and hasattr(model, "enable_input_require_grads"):
+        model.enable_input_require_grads()
 
     total = sum(p.numel() for p in model.parameters())
     trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
     rank = int(os.environ.get("RANK", "0"))
     if rank == 0:
-        print(f"parameters total={total:,} trainable={trainable:,} frozen_non_text={frozen:,}")
+        print(f"parameters total={total:,} trainable={trainable:,} frozen_non_text={frozen:,} lora_r={args.lora_r}")
 
     train_dataset = load_from_disk(args.dataset_path)
     collator = AgentSFTCollator(tokenizer.pad_token_id)
@@ -100,7 +128,7 @@ def main():
         tf32=True,
         gradient_checkpointing=True,
         gradient_checkpointing_kwargs={"use_reentrant": False},
-        optim="adamw_torch_fused",
+        optim=args.optim,
         logging_strategy="steps",
         logging_steps=args.logging_steps,
         logging_first_step=True,
